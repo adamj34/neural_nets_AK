@@ -1,7 +1,8 @@
 import torch
 
-t = torch.zeros(3,3, dtype=torch.int32)
-# print(t)
-t[0,1] = 43
-t=t[1:,]
+g = torch.Generator().manual_seed(2147483647)
+t = torch.randn((3,4), generator=g) * 3
+b1 = torch.randn(4, generator=g)
 print(t)
+print(b1)
+print(t + b1)
