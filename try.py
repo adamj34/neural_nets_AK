@@ -1,8 +1,13 @@
 import torch
+import numpy as np
 
-g = torch.Generator().manual_seed(2147483647)
-t = torch.randn((3,4), generator=g) * 3
-b1 = torch.randn(4, generator=g)
-print(t)
-print(b1)
-print(t + b1)
+print('hello')
+
+
+a = 'str'
+a = 1
+
+print(a)
+
+a = np.array([1,2,3])
+print(a)
