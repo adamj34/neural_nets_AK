@@ -3,17 +3,17 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 # hyperparameters
-batch_size = 32 # how many independent sequences will we process in parallel?
-block_size = 128 # what is the maximum context length for predictions?
-max_iters = 2000
+batch_size = 64 # how many independent sequences will we process in parallel?
+block_size = 256 # what is the maximum context length for predictions?
+max_iters = 4000
 eval_interval = 500
 learning_rate = 3e-4
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters = 200
-n_embd = 252
-n_head = 3
-n_layer = 3
-dropout = 0.2
+n_embd = 384
+n_head = 6
+n_layer = 6
+dropout = 0.15
 # ------------
 
 torch.manual_seed(1337)
@@ -78,7 +78,7 @@ class Head(nn.Module):
         k = self.key(x) # (B,T,C)
         q = self.query(x) # (B,T,C)
         # compute attention scores ('affinnities')
-        wei = q @ k.transpose(-2, -1) * C**-0.5 # (B,T,C) @ (B,C,T) => (B,T,T), scale by 1/sqrt(C) to avoid softmax going one-hot
+        wei = q @ k.transpose(-2, -1) * k.shape[-1]**-0.5 # (B,T,C) @ (B,C,T) => (B,T,T), scale by 1/sqrt(head_size) to avoid softmax going one-hot
         wei = wei.masked_fill(self.tril[:T,:T] == 0, float('-inf')) # (B,T,T)
         wei = F.softmax(wei, dim=-1) # (B,T,T)
         wei = self.dropout(wei) # (B,T,T)
@@ -95,11 +95,12 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(n_heads)])
         self.proj = nn.Linear(n_embd, n_embd)
-        nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
+        # many self-attention heads allow many communication channels
         out = torch.cat([h(x) for h in self.heads], dim=-1) # concat over the channel dim
-        out = self.proj(out) # (B,T,C)
+        out = self.dropout(self.proj(out)) # (B,T,C)
         return out
     
 
@@ -111,7 +112,7 @@ class FeedForward(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(n_embd, 4 * n_embd),
             nn.ReLU(),
-            nn.Linear(4 * n_embd, n_embd), # residual connection 
+            nn.Linear(4 * n_embd, n_embd),
             nn.Dropout(dropout)
         )
 
@@ -136,7 +137,6 @@ class Block(nn.Module):
         x = x + self.ffwd(self.ln2(x)) 
         return x
     
-# super simple bigram model
 class GPT(nn.Module):
 
     def __init__(self):
@@ -155,7 +155,7 @@ class GPT(nn.Module):
         tok_emb = self.token_embedding_table(idx) # (B,T,C) (batch_size, block_size, n_embd)
         pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,C) (block_size, n_embd)
         x = tok_emb + pos_emb # (B,T,C)
-        x = self.blocks(x) # (B,T,C
+        x = self.blocks(x) # (B,T,C)
         logits = self.lm_head(x) # (B,T,vocab_size) 
 
         if targets is None:
@@ -164,7 +164,7 @@ class GPT(nn.Module):
             B, T, C = logits.shape
             logits = logits.view(B*T, C)
             targets = targets.view(B*T)
-            loss = F.cross_entropy(logits, targets)
+            loss = F.cross_entropy(logits, targets, label_smoothing=0.1)
 
         return logits, loss
 
@@ -212,4 +212,4 @@ for iter in range(max_iters):
 
 # generate from the model
 context = torch.zeros((1, 1), dtype=torch.long, device=device)
-print(decode(m.generate(context, max_new_tokens=15000)[0].tolist())) 
+print(decode(m.generate(context, max_new_tokens=20000)[0].tolist())) 
